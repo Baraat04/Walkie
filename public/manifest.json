@@ -1,0 +1,17 @@
+{
+  "name": "Walkie — Territory Capture",
+  "short_name": "Walkie",
+  "description": "Real-time multiplayer territory capture game",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A0A0F",
+  "theme_color": "#7C3AED",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ]
+}

@@ -1,26 +1,115 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --font-family-sans: var(--font-inter), system-ui, sans-serif;
+  --color-primary: #000000;
+  --color-primary-light: #333333;
+  --color-accent: #2563EB;
+  --color-success: #10B981;
+  --color-danger: #EF4444;
+  --color-surface: #FFFFFF;
+  --color-surface-strong: #F3F4F6;
+  --color-border: #E5E7EB;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  touch-action: pan-x pan-y;
+  background-color: #FAFAFA;
+  color: #111827;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Glassmorphism card - simplified to flat card */
+.glass {
+  background: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
+
+.glass-dark {
+  background: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Simple text utilities */
+.text-primary {
+  color: #111827;
+}
+
+.text-secondary {
+  color: #6B7280;
+}
+
+/* Leaflet overrides */
+.leaflet-container {
+  background: #F3F4F6 !important;
+  font-family: var(--font-inter), sans-serif;
+}
+
+.leaflet-control-zoom {
+  border: 1px solid #E5E7EB !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+}
+
+.leaflet-control-zoom a {
+  background: #FFFFFF !important;
+  color: #111827 !important;
+  border-bottom: 1px solid #E5E7EB !important;
+  font-size: 16px !important;
+  line-height: 30px !important;
+  width: 30px !important;
+  height: 30px !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background: #F9FAFB !important;
+}
+
+.leaflet-control-attribution {
+  background: rgba(255,255,255,0.8) !important;
+  color: #6B7280 !important;
+  font-size: 10px !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 2px; }
+
+/* Smooth transitions */
+.transition-smooth {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Input styles */
+.input-field {
+  background: #FFFFFF;
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #111827;
+  font-size: 14px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-field:focus {
+  border-color: #2563EB;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+
+.input-field::placeholder {
+  color: #9CA3AF;
+}
+
