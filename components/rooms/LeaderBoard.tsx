@@ -14,6 +14,13 @@ interface Participant {
   } | null
 }
 
+interface RawParticipant {
+  user_id: string
+  color: string
+  joined_at: string
+  profiles: { username: string; total_captured_area: number }[] | null
+}
+
 interface Territory {
   owner_id: string | null
 }
@@ -40,7 +47,13 @@ export default function LeaderBoard({ roomId }: LeaderBoardProps) {
         .select('owner_id')
         .eq('room_id', roomId)
 
-      if (parts) setParticipants(parts as Participant[])
+      if (parts) {
+        const normalized = (parts as RawParticipant[]).map(p => ({
+          ...p,
+          profiles: p.profiles?.[0] ?? null,
+        }))
+        setParticipants(normalized)
+      }
       if (terrs) {
         const map: Record<string, number> = {}
         terrs.forEach((t: Territory) => {
