@@ -118,7 +118,7 @@ export default function MapView({ roomId, userId, userColor }: MapViewProps) {
       for (const t of data) {
         const bounds = t.geojson_bounds as { cellId: string }
         if (bounds?.cellId) {
-          const participant = t.room_participants as { color: string } | null
+          const participant = (t.room_participants as { color: string }[] | null)?.[0] ?? null
           map[bounds.cellId] = {
             owner_id: t.owner_id,
             dbId: t.id,
