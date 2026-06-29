@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic'
 import { useState } from 'react'
 import LeaderBoard from '@/components/rooms/LeaderBoard'
+import FinishedSummary from '@/components/rooms/FinishedSummary'
 
 // Leaflet must be client-only (no SSR)
 const MapView = dynamic(() => import('@/components/map/MapView'), {
@@ -44,51 +45,63 @@ function timeRemaining(expiresAt: string): string {
 
 export default function RoomClient({ room, userId, userColor }: RoomClientProps) {
   const [showLeaderboard, setShowLeaderboard] = useState(false)
-  const expired = new Date(room.expires_at) < new Date()
+  const expired = new Date(room.expires_at) < new Date() || room.status === 'completed'
+  const [showSummary, setShowSummary] = useState(expired)
 
   return (
     <div className="relative h-full">
       {/* Expired banner */}
-      {expired && (
-        <div className="absolute top-0 left-0 right-0 z-[999] bg-red-500/90 backdrop-blur-sm text-white text-center text-xs py-2 font-bold shadow-sm">
-          This room has ended &mdash; territory is now locked
-        </div>
+      {expired && !showSummary && (
+        <button onClick={() => setShowSummary(true)} className="absolute top-0 left-0 right-0 z-[999] bg-red-500/90 hover:bg-red-600 backdrop-blur-sm text-white text-center text-xs py-2 font-bold shadow-sm transition-colors">
+          Room Ended &mdash; Click to view match results
+        </button>
       )}
 
       {/* Map — full screen */}
       <div className="absolute inset-0">
-        <MapView roomId={room.id} userId={userId} userColor={userColor} />
+        <MapView roomId={room.id} userId={userId} userColor={userColor} isFinished={expired} />
       </div>
 
       {/* Top info pill */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-white rounded-full px-4 py-1.5 border border-gray-200 flex items-center gap-2 shadow-sm">
-        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-        <span className="text-xs font-semibold text-gray-900 truncate max-w-[160px]">{room.name}</span>
-        <span className="text-xs text-gray-300">&bull;</span>
-        <span className="text-xs text-gray-500">{timeRemaining(room.expires_at)}</span>
-      </div>
+      {!expired && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-white rounded-full px-4 py-1.5 border border-gray-200 flex items-center gap-2 shadow-sm">
+          <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+          <span className="text-xs font-semibold text-gray-900 truncate max-w-[160px]">{room.name}</span>
+          <span className="text-xs text-gray-300">&bull;</span>
+          <span className="text-xs text-gray-500">{timeRemaining(room.expires_at)}</span>
+        </div>
+      )}
 
       {/* Leaderboard toggle button */}
-      <button
-        onClick={() => setShowLeaderboard(!showLeaderboard)}
-        className="absolute bottom-6 left-4 z-[1000] bg-white rounded-full px-4 py-2 border border-gray-200 text-sm font-semibold text-gray-700 hover:text-gray-900 hover:bg-gray-50 transition-all shadow-md flex items-center gap-2"
-      >
-        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
-        <span className="text-xs">{showLeaderboard ? 'Hide' : 'Ranks'}</span>
-      </button>
+      {!expired && (
+        <button
+          onClick={() => setShowLeaderboard(!showLeaderboard)}
+          className="absolute bottom-6 left-4 z-[1000] bg-white rounded-full px-4 py-2 border border-gray-200 text-sm font-semibold text-gray-700 hover:text-gray-900 hover:bg-gray-50 transition-all shadow-md flex items-center gap-2"
+        >
+          <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+          <span className="text-xs">{showLeaderboard ? 'Hide' : 'Players'}</span>
+        </button>
+      )}
 
       {/* Leaderboard panel (slides in) */}
-      {showLeaderboard && (
+      {!expired && showLeaderboard && (
         <div className="absolute bottom-20 left-4 z-[1000] w-64 h-72">
-          <LeaderBoard roomId={room.id} />
+          <LeaderBoard roomId={room.id} currentUserId={userId} />
         </div>
       )}
 
       {/* Player color indicator */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2 bg-white rounded-full px-3 py-1.5 border border-gray-200 shadow-sm">
-        <div className="w-3 h-3 rounded-full" style={{ background: userColor }} />
-        <span className="text-[11px] text-gray-500 font-medium">Your color</span>
-      </div>
+      {!expired && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2 bg-white rounded-full px-3 py-1.5 border border-gray-200 shadow-sm">
+          <div className="w-3 h-3 rounded-full" style={{ background: userColor }} />
+          <span className="text-[11px] text-gray-500 font-medium">Your color</span>
+        </div>
+      )}
+
+      {/* Finished Summary Overlay */}
+      {showSummary && (
+        <FinishedSummary roomId={room.id} room={room} onClose={() => setShowSummary(false)} />
+      )}
     </div>
   )
 }

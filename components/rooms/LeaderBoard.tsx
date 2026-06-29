@@ -27,11 +27,14 @@ interface Territory {
 
 interface LeaderBoardProps {
   roomId: string
+  currentUserId: string
 }
 
-export default function LeaderBoard({ roomId }: LeaderBoardProps) {
+export default function LeaderBoard({ roomId, currentUserId }: LeaderBoardProps) {
   const [participants, setParticipants] = useState<Participant[]>([])
   const [territoryMap, setTerritoryMap] = useState<Record<string, number>>({})
+  const [friends, setFriends] = useState<Set<string>>(new Set())
+  const [sentRequests, setSentRequests] = useState<Set<string>>(new Set())
   const supabase = createClient()
 
   useEffect(() => {
@@ -61,6 +64,23 @@ export default function LeaderBoard({ roomId }: LeaderBoardProps) {
         })
         setTerritoryMap(map)
       }
+
+      const { data: frs } = await supabase
+        .from('friend_requests')
+        .select('sender_id, receiver_id, status')
+        .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
+
+      if (frs) {
+        const fSet = new Set<string>()
+        const rSet = new Set<string>()
+        frs.forEach(r => {
+          const otherId = r.sender_id === currentUserId ? r.receiver_id : r.sender_id
+          if (r.status === 'accepted') fSet.add(otherId)
+          else if (r.sender_id === currentUserId && r.status === 'pending') rSet.add(otherId)
+        })
+        setFriends(fSet)
+        setSentRequests(rSet)
+      }
     }
     load()
 
@@ -71,17 +91,26 @@ export default function LeaderBoard({ roomId }: LeaderBoardProps) {
       .subscribe()
 
     return () => { supabase.removeChannel(sub) }
-  }, [roomId])
+  }, [roomId, currentUserId])
 
   const sorted = [...participants].sort(
     (a, b) => (territoryMap[b.user_id] ?? 0) - (territoryMap[a.user_id] ?? 0)
   )
 
+  const handleAddFriend = async (targetId: string) => {
+    setSentRequests(prev => new Set(prev).add(targetId))
+    await supabase.from('friend_requests').insert({
+      sender_id: currentUserId,
+      receiver_id: targetId,
+      status: 'pending'
+    })
+  }
+
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-4 h-full overflow-hidden flex flex-col shadow-lg">
       <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
-        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
-        <span>Leaderboard</span>
+        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+        <span>Players</span>
         <span className="ml-auto text-[10px] text-gray-500 font-medium bg-gray-100 px-2 py-0.5 rounded-full">{participants.length} players</span>
       </h3>
 
@@ -92,25 +121,32 @@ export default function LeaderBoard({ roomId }: LeaderBoardProps) {
             <p className="text-xs text-gray-400">No players yet</p>
           </div>
         )}
-        {sorted.map((p, i) => {
-          const cells = territoryMap[p.user_id] ?? 0
+        {sorted.map((p) => {
           const color = p.color || getPlayerColor(p.user_id)
           return (
             <div key={p.user_id} className="flex items-center gap-3 py-2 px-3 rounded-xl bg-gray-50 border border-gray-100">
-              <span className="text-xs font-bold text-gray-400 w-4 text-center">{i + 1}</span>
               <div
-                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 text-white"
+                className="w-4 h-4 rounded-full flex-shrink-0"
                 style={{ background: color }}
-              >
-                {p.profiles?.username?.[0]?.toUpperCase() ?? '?'}
-              </div>
+              />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-gray-900 truncate">
-                  {p.profiles?.username ?? 'Anonymous'}
+                <p className="text-sm font-semibold text-gray-900 truncate">
+                  {p.profiles?.username ?? p.user_id}
                 </p>
-                <p className="text-[10px] text-gray-500">{cells} cells</p>
               </div>
-              {i === 0 && cells > 0 && <span className="text-blue-500"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 2a.75.75 0 01.75.75v1.25A1.5 1.5 0 0113.5 6h1.25a.75.75 0 01.75.75v1.25a1.5 1.5 0 012.25 1.5v6a2 2 0 01-2 2h-11a2 2 0 01-2-2v-6A1.5 1.5 0 014.5 8.75V7.5a.75.75 0 01.75-.75H6.5A1.5 1.5 0 018 4V2.75A.75.75 0 0110 2zm1 6v1h1V8h-1zm-3 1H7v1h1V9zm3 2h-1v1h1v-1z" clipRule="evenodd"></path></svg></span>}
+              {p.user_id !== currentUserId && !friends.has(p.user_id) && (
+                <button
+                  disabled={sentRequests.has(p.user_id)}
+                  onClick={() => handleAddFriend(p.user_id)}
+                  className={`flex-shrink-0 text-[10px] font-bold px-2 py-1 rounded-md transition-colors ${
+                    sentRequests.has(p.user_id)
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                  }`}
+                >
+                  {sentRequests.has(p.user_id) ? 'Sent' : 'Add Friend'}
+                </button>
+              )}
             </div>
           )
         })}

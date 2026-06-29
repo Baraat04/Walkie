@@ -4,13 +4,14 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useGeolocation } from '@/lib/hooks/useGeolocation'
 import { generateTerritoryGrid, findCellForPosition, type TerritoryCell } from '@/lib/utils/territory'
-import { getPlayerColor, hexToRgba } from '@/lib/utils/colors'
+
 
 interface TerritoryOwnership {
   [cellId: string]: {
     owner_id: string
     dbId: string
     color: string
+    bounds?: [number, number][]
   }
 }
 
@@ -18,9 +19,10 @@ interface MapViewProps {
   roomId: string
   userId: string
   userColor: string
+  isFinished?: boolean
 }
 
-export default function MapView({ roomId, userId, userColor }: MapViewProps) {
+export default function MapView({ roomId, userId, userColor, isFinished }: MapViewProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletMapRef = useRef<import('leaflet').Map | null>(null)
   const polygonLayersRef = useRef<Record<string, import('leaflet').Polygon>>({})
@@ -34,7 +36,7 @@ export default function MapView({ roomId, userId, userColor }: MapViewProps) {
   const [capturing, setCapturing] = useState(false)
   const [captureMsg, setCaptureMsg] = useState<string | null>(null)
 
-  const geo = useGeolocation(true)
+  const geo = useGeolocation(!isFinished)
   const supabase = createClient()
 
   // Initialize Leaflet map
@@ -92,6 +94,7 @@ export default function MapView({ roomId, userId, userColor }: MapViewProps) {
 
   // Update grid center when we get real GPS (overrides the New York fallback)
   useEffect(() => {
+    if (isFinished) return
     if (!geo.latitude || !geo.longitude) return
     if (gridIsFromGPS.current) return // already seeded from GPS, no need to redo
     gridIsFromGPS.current = true
@@ -102,7 +105,7 @@ export default function MapView({ roomId, userId, userColor }: MapViewProps) {
     const generatedGrid = generateTerritoryGrid(geo.latitude, geo.longitude)
     setGrid(generatedGrid)
     leafletMapRef.current?.setView([geo.latitude, geo.longitude], 17)
-  }, [geo.latitude, geo.longitude])
+  }, [geo.latitude, geo.longitude, isFinished])
 
   // Load existing territory ownership from DB
   useEffect(() => {
@@ -116,13 +119,14 @@ export default function MapView({ roomId, userId, userColor }: MapViewProps) {
       if (!data) return
       const map: TerritoryOwnership = {}
       for (const t of data) {
-        const bounds = t.geojson_bounds as { cellId: string }
+        const bounds = t.geojson_bounds as any
         if (bounds?.cellId) {
           const participant = (t.room_participants as { color: string }[] | null)?.[0] ?? null
           map[bounds.cellId] = {
             owner_id: t.owner_id,
             dbId: t.id,
-            color: participant?.color ?? getPlayerColor(t.owner_id),
+            color: participant?.color ?? '#9CA3AF',
+            bounds: bounds.coordinates?.[0]?.map((c: number[]) => [c[1], c[0]]) as [number, number][],
           }
         }
       }
@@ -133,7 +137,7 @@ export default function MapView({ roomId, userId, userColor }: MapViewProps) {
 
   // Subscribe to realtime territory changes
   useEffect(() => {
-    if (!mapReady) return
+    if (!mapReady || isFinished) return
     const channel = supabase
       .channel(`territories-${roomId}`)
       .on(
@@ -158,7 +162,7 @@ export default function MapView({ roomId, userId, userColor }: MapViewProps) {
             [record.geojson_bounds.cellId]: {
               owner_id: record.owner_id,
               dbId: record.id,
-              color: participant?.color ?? getPlayerColor(record.owner_id),
+              color: participant?.color ?? '#9CA3AF',
             },
           }))
         }
@@ -171,19 +175,30 @@ export default function MapView({ roomId, userId, userColor }: MapViewProps) {
   // Render territory polygons on map
   useEffect(() => {
     const map = leafletMapRef.current
-    if (!map || grid.length === 0) return
+    if (!map) return
+    if (!isFinished && grid.length === 0) return
 
     const applyPolygons = async () => {
       const L = (await import('leaflet')).default
-      grid.forEach(cell => {
-        const owned = ownership[cell.id]
-        const color = owned ? owned.color : 'transparent'
-        const fillOpacity = owned ? 0.45 : 0
-        const strokeColor = owned ? owned.color : 'rgba(255,255,255,0.08)'
-        const strokeOpacity = owned ? 0.8 : 0.3
+      
+      const itemsToRender = isFinished 
+        ? Object.entries(ownership).map(([id, o]) => ({ id, color: o.color, bounds: o.bounds }))
+        : grid.map(cell => {
+            const owned = ownership[cell.id]
+            return { id: cell.id, color: owned ? owned.color : 'transparent', bounds: cell.bounds }
+          })
 
-        if (polygonLayersRef.current[cell.id]) {
-          polygonLayersRef.current[cell.id].setStyle({
+      let boundsToFit: import('leaflet').LatLngBounds | null = null
+
+      itemsToRender.forEach(({ id, color, bounds }) => {
+        if (!bounds) return
+        
+        const fillOpacity = color === 'transparent' ? 0 : 0.45
+        const strokeColor = color === 'transparent' ? 'rgba(255,255,255,0.08)' : color
+        const strokeOpacity = color === 'transparent' ? 0.3 : 0.8
+
+        if (polygonLayersRef.current[id]) {
+          polygonLayersRef.current[id].setStyle({
             fillColor: color,
             fillOpacity,
             color: strokeColor,
@@ -191,23 +206,41 @@ export default function MapView({ roomId, userId, userColor }: MapViewProps) {
             weight: 1.5,
           })
         } else {
-          const poly = L.polygon(cell.bounds as [number, number][], {
+          const poly = L.polygon(bounds as [number, number][], {
             fillColor: color,
             fillOpacity,
             color: strokeColor,
             opacity: strokeOpacity,
             weight: 1.5,
-            smoothFactor: 0,
+            smoothFactor: 1.5,
+            lineJoin: 'round',
+            className: 'territory-polygon',
           }).addTo(map)
-          polygonLayersRef.current[cell.id] = poly
+          polygonLayersRef.current[id] = poly
+        }
+        
+        if (isFinished && color !== 'transparent') {
+           if (!boundsToFit) {
+             boundsToFit = L.latLngBounds(bounds as [number, number][])
+           } else {
+             boundsToFit.extend(bounds as [number, number][])
+           }
         }
       })
+      
+      // Auto-fit bounds if we just loaded the finished map
+      if (isFinished && boundsToFit && Object.keys(polygonLayersRef.current).length > 0 && !gridIsFromGPS.current) {
+         gridIsFromGPS.current = true
+         map.fitBounds(boundsToFit, { padding: [50, 50] })
+      }
     }
     applyPolygons()
-  }, [grid, ownership])
+  }, [grid, ownership, isFinished])
 
   // Move player marker and trigger capture
   const handleCapture = useCallback(async (lat: number, lng: number) => {
+    if (isFinished) return
+    
     const map = leafletMapRef.current
     if (!map) return
 
@@ -282,24 +315,26 @@ export default function MapView({ roomId, userId, userColor }: MapViewProps) {
       <div ref={mapRef} className="w-full h-full" />
 
       {/* GPS status */}
-      <div className="absolute top-4 left-4 z-[1000]">
-        <div className={`bg-white rounded-full px-3 py-1.5 border shadow-sm text-xs font-semibold flex items-center gap-2 ${
-          geo.latitude
-            ? 'border-green-200 text-green-700'
-            : geo.error
-            ? 'border-red-200 text-red-600'
-            : 'border-gray-200 text-gray-500'
-        }`}>
-          <span className={`w-2 h-2 rounded-full ${
-            geo.latitude ? 'bg-green-500 animate-pulse' : geo.error ? 'bg-red-500' : 'bg-gray-300'
-          }`} />
-          {geo.latitude
-            ? `GPS: ${geo.latitude.toFixed(5)}, ${geo.longitude?.toFixed(5)}`
-            : geo.error
-            ? 'GPS Error'
-            : 'Acquiring GPS...'}
+      {!isFinished && (
+        <div className="absolute top-4 left-4 z-[1000]">
+          <div className={`bg-white rounded-full px-3 py-1.5 border shadow-sm text-xs font-semibold flex items-center gap-2 ${
+            geo.latitude
+              ? 'border-green-200 text-green-700'
+              : geo.error
+              ? 'border-red-200 text-red-600'
+              : 'border-gray-200 text-gray-500'
+          }`}>
+            <span className={`w-2 h-2 rounded-full ${
+              geo.latitude ? 'bg-green-500 animate-pulse' : geo.error ? 'bg-red-500' : 'bg-gray-300'
+            }`} />
+            {geo.latitude
+              ? `GPS: ${geo.latitude.toFixed(5)}, ${geo.longitude?.toFixed(5)}`
+              : geo.error
+              ? 'GPS Error'
+              : 'Acquiring GPS...'}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Capture message */}
       {captureMsg && (
@@ -321,7 +356,7 @@ export default function MapView({ roomId, userId, userColor }: MapViewProps) {
       )}
 
       {/* Center on player button */}
-      {geo.latitude && (
+      {!isFinished && geo.latitude && (
         <button
           onClick={() => leafletMapRef.current?.setView([geo.latitude!, geo.longitude!], 17)}
           className="absolute bottom-6 right-4 z-[1000] w-10 h-10 bg-white rounded-full border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-50 transition-colors shadow-md"

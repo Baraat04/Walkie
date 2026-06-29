@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Header from '@/components/layout/Header'
 import RoomClient from './RoomClient'
+import { PLAYER_COLORS } from '@/lib/utils/colors'
 
 export default async function RoomPage({
   params,
@@ -28,21 +29,38 @@ export default async function RoomPage({
     .eq('id', user.id)
     .single()
 
-  // Auto-join the room
-  await supabase
-    .from('room_participants')
-    .upsert({
-      room_id: id,
-      user_id: user.id,
-    }, { onConflict: 'room_id,user_id', ignoreDuplicates: true })
-
-  // Get participant color
-  const { data: participant } = await supabase
+  // Get participant color to see if they already have one
+  const { data: existingParticipant } = await supabase
     .from('room_participants')
     .select('color')
     .eq('room_id', id)
     .eq('user_id', user.id)
     .single()
+
+  let userColor = existingParticipant?.color
+
+  if (!userColor) {
+    // Get all existing participants to find used colors
+    const { data: participants } = await supabase
+      .from('room_participants')
+      .select('color')
+      .eq('room_id', id)
+      .not('color', 'is', null)
+
+    const usedColors = new Set(participants?.map(p => p.color) || [])
+    userColor = PLAYER_COLORS.find(c => !usedColors.has(c)) || PLAYER_COLORS[0]
+
+    // Join the room and save the assigned color
+    await supabase
+      .from('room_participants')
+      .upsert({
+        room_id: id,
+        user_id: user.id,
+        color: userColor,
+      }, { onConflict: 'room_id,user_id' })
+  }
+  
+  const participant = { color: userColor }
 
   return (
     <div className="h-full flex flex-col">

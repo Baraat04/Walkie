@@ -113,3 +113,7 @@ html, body {
   color: #9CA3AF;
 }
 
+/* Territory Polygons */
+.territory-polygon {
+  transition: fill 0.3s ease-in-out, fill-opacity 0.3s ease-in-out, stroke 0.3s ease-in-out, stroke-opacity 0.3s ease-in-out;
+}
